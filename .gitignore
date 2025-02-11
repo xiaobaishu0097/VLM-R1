@@ -180,6 +180,7 @@ checkpoints/
 
 output/
 rec_jsons_processed/
+runs
 
 test/
 images_eval/
