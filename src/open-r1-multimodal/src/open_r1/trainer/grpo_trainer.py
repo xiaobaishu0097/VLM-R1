@@ -159,7 +159,6 @@ class Qwen2VLGRPOTrainer(Trainer):
         max_pixels: Optional[int] = 12845056,
         min_pixels: Optional[int] = 3136,
         attn_implementation: str = "flash_attention_2",
-        torch_dtype: str = "bfloat16",
     ):
         # Args
         if args is None:
@@ -173,7 +172,7 @@ class Qwen2VLGRPOTrainer(Trainer):
         model_init_kwargs["attn_implementation"] = attn_implementation
         if isinstance(model, str):
             model_id = model
-            torch_dtype = torch_dtype
+            torch_dtype = model_init_kwargs.get("torch_dtype")
             if isinstance(torch_dtype, torch.dtype) or torch_dtype == "auto" or torch_dtype is None:
                 pass  # torch_dtype is already a torch.dtype or "auto" or None
             elif isinstance(torch_dtype, str):  # it's a str, but not "auto"

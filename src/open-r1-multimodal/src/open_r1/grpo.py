@@ -187,7 +187,6 @@ def main(script_args, training_args, model_args):
         attn_implementation=model_args.attn_implementation,
         max_pixels=script_args.max_pixels,
         min_pixels=script_args.min_pixels,
-        torch_dtype=model_args.torch_dtype,
     )
 
     # Train and push the model to the Hub
