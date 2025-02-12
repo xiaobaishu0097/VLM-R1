@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  trainer:
+    image: pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel-r1-v
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    shm_size: '8gb'
+    volumes:
+      - /data1:/data1
+      - /data2:/data2
+      - /data3:/data3
+      - /data11:/data11
+      - /mnt/cfs/xu_ruochen/:/mnt/cfs/xu_ruochen/
+      - /mnt/cfs/omchat_resources/:/mnt/cfs/omchat_resources/
+      - /data1/xu_ruochen/VLM-R1/src/open-r1-multimodal:/workspace
+    environment:
+      - MASTER_ADDR=${MASTER_ADDR:-140.207.201.34}
+      - MASTER_PORT=${MASTER_PORT:-12345}
+      - NODE_RANK=${NODE_RANK:-0}
+      - WORLD_SIZE=${WORLD_SIZE:-4}
+      - DEBUG_MODE=true
+      - LOG_PATH=./log/debug_log_2b.txt
+      - WANDB_API_KEY=e954056d50cf2ad0a5918d61d266b243dae84e91
+      - WANDB_PROJECT=vision-reasoning
+      - WANDB_RUN_NAME=Qwen-VL-2B-GRPO-2025-02-12-11-03-08
+      - PYTHONPATH=/workspace/src
+    network_mode: "host"
+    command: /bin/bash
+    working_dir: /data1/xu_ruochen/VLM-R1/src/open-r1-multimodal
