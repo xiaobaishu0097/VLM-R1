@@ -98,6 +98,16 @@ def format_reward(completions, **kwargs):
     pattern = r"<think>.*?</think>\s*<answer>.*?</answer>"
     completion_contents = [completion[0]["content"] for completion in completions]
     matches = [re.fullmatch(pattern, content, re.DOTALL) for content in completion_contents]
+
+    current_time = datetime.now().strftime("%d-%H-%M-%S-%f")
+    if os.getenv("DEBUG_MODE") == "true":
+        log_path = os.getenv("LOG_PATH")
+        with open(log_path, "a") as f:
+            f.write(f"------------- {current_time} Format reward -------------\n")
+            for content, match in zip(completion_contents, matches):
+                f.write(f"Content: {content}\n")
+                f.write(f"Has format: {bool(match)}\n")
+
     return [1.0 if match else 0.0 for match in matches]
 
 

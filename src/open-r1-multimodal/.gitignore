@@ -176,3 +176,6 @@ wandb/
 scripts/
 checkpoints/
 .vscode/
+
+# Log files
+*log*.txt

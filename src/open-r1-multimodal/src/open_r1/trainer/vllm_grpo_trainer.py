@@ -428,6 +428,7 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
                     temperature=args.temperature,
                     max_tokens=self.max_completion_length,
                 )
+                print(self.sampling_params)
 
             self._last_loaded_step = (
                 0  # tag to avoid useless loading during grad accumulation
