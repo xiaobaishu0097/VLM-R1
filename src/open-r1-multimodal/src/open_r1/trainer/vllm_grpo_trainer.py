@@ -423,7 +423,12 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
                         # This is particularly useful here because we generate completions from the same prompts.
                         enable_prefix_caching=True,
                         enforce_eager=True,
-                        max_model_len=args.max_completion_length,
+                        enable_chunked_prefill=False,
+                        mm_processor_kwargs={
+                            "max_pixels": max_pixels,
+                            "min_pixels": min_pixels,
+                        },
+                        # max_model_len=args.max_completion_length,
                     )
                 self.sampling_params = SamplingParams(
                     temperature=args.temperature,
