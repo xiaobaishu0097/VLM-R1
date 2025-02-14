@@ -25,6 +25,7 @@ from math_verify import parse, verify
 from open_r1.trainer import Qwen2VLGRPOTrainer, Qwen2VLGRPOVLLMTrainer
 from trl import GRPOConfig, GRPOTrainer, ModelConfig, ScriptArguments, TrlParser, get_peft_config
 import PIL
+from Levenshtein import ratio 
 
 @dataclass
 class GRPOScriptArguments(ScriptArguments):
@@ -62,13 +63,13 @@ class GRPOScriptArguments(ScriptArguments):
 
 
 def accuracy_reward(completions, solution, **kwargs):
-    """Reward function that checks if the completion is correct using either symbolic verification or exact string matching."""
+    """Reward function that checks if the completion is correct using symbolic verification, exact string matching, or fuzzy matching."""
     contents = [completion[0]["content"] for completion in completions]
     rewards = []
     current_time = datetime.now().strftime("%d-%H-%M-%S-%f")
     for content, sol in zip(contents, solution):
         reward = 0.0
-        # Try symbolic verification first
+        # Try symbolic verification first for numeric answers
         try:
             answer = parse(content)
             if float(verify(answer, parse(sol))) > 0:
@@ -76,7 +77,7 @@ def accuracy_reward(completions, solution, **kwargs):
         except Exception:
             pass  # Continue to next verification method if this fails
 
-        # If symbolic verification failed, try string matching
+        # If symbolic verification failed, try string matching or fuzzy matching
         if reward == 0.0:
             try:
                 # Extract answer from solution if it has think/answer tags
@@ -84,19 +85,25 @@ def accuracy_reward(completions, solution, **kwargs):
                 ground_truth = sol_match.group(1).strip() if sol_match else sol.strip()
                 
                 # Extract answer from content if it has think/answer tags
-                content_match = re.search(r'<answer>(.*?)</answer>', content)
+                content_match = re.search(r'<answer>(.*?)</answer>', content, re.DOTALL)
                 student_answer = content_match.group(1).strip() if content_match else content.strip()
                 
-                # Compare the extracted answers
-                if student_answer == ground_truth:
-                    reward = 1.0
+                # Check if ground truth contains any numbers
+                has_numbers = bool(re.search(r'\d', ground_truth))
+                
+                if has_numbers:
+                    # For numeric answers, use exact matching
+                    reward = 1.0 if student_answer == ground_truth else 0.0
+                else:
+                    # For text answers, use fuzzy matching
+                    reward = ratio(student_answer.lower(), ground_truth.lower())
+                
             except Exception:
-                pass  # Keep reward as 0.0 if both methods fail
+                pass  # Keep reward as 0.0 if all methods fail
                 
         rewards.append(reward)
         if os.getenv("DEBUG_MODE") == "true":
             log_path = os.getenv("LOG_PATH")
-            # local_rank = int(os.getenv("LOCAL_RANK", 0))
             with open(log_path, "a", encoding='utf-8') as f:
                 f.write(f"------------- {current_time} Accuracy reward: {reward} -------------\n")
                 f.write(f"Content: {content}\n")
