@@ -61,6 +61,7 @@ from trl.trainer.utils import generate_model_card, get_comet_experiment_url, pad
 from trl import GRPOTrainer
 
 import copy
+import PIL.Image
 
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
@@ -511,18 +512,23 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
     ) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
         prompts = [x["prompt"] for x in inputs]
-        images = [x["image"] for x in inputs]
-        prompts_text = [
-            maybe_apply_chat_template(example, self.processing_class)["prompt"]
-            for example in inputs
-        ]
+        
+        # Handle both pre-loaded images and image paths
+        images = []
+        for x in inputs:
+            if "image" in x:
+                images.append(x["image"])
+            else:
+                images.append(PIL.Image.open(x["image_path"]))
+            
+        prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs]
+        
         prompt_inputs = self.processing_class(
-            # prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
             text=prompts_text,
             images=images,
             return_tensors="pt",
             padding=True,
-            padding_side="left",
+            padding_side="left", 
             add_special_tokens=False,
         )
         prompt_ids, prompt_mask = (

@@ -47,6 +47,7 @@ from trl.trainer.grpo_config import GRPOConfig
 from trl.trainer.utils import generate_model_card, get_comet_experiment_url
 
 import copy
+import PIL.Image
 
 
 if is_peft_available():
@@ -356,11 +357,17 @@ class Qwen2VLGRPOTrainer(Trainer):
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
     
-        
-
         prompts = [x["prompt"] for x in inputs]
         prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs]
-        images = [x["image"] for x in inputs]
+        
+        # Handle both pre-loaded images and image paths
+        images = []
+        for x in inputs:
+            if "image" in x:
+                images.append(x["image"])
+            else:
+                images.append(PIL.Image.open(x["image_path"]))
+        
         prompt_inputs = self.processing_class(
             text=prompts_text,
             images=images,

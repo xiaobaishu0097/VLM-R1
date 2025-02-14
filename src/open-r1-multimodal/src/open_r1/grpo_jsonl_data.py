@@ -39,6 +39,10 @@ class GRPOScriptArguments(ScriptArguments):
         default=None,
         metadata={"help": "Paths to image folders, separated by ':'"},
     )
+    arrow_cache_dir: str = field(
+        default=None,
+        metadata={"help": "Path to arrow cache directory"},
+    )
     val_split_ratio: float = field(
         default=0.0,
         metadata={"help": "Ratio of validation split, default 0.0"},
@@ -156,32 +160,28 @@ def main(script_args, training_args, model_args):
                 # Remove immediate image loading
                 item['problem'] = item['conversations'][0]['value'].replace('<image>', '')
                 item['solution'] = item['conversations'][1]['value'].replace('<answer>', '').replace('</answer>', '').strip()
+                del item['image'] # remove the image column so that it can be loaded later
                 all_data.append(item)
     
     dataset = Dataset.from_list(all_data)
 
     def make_conversation_from_jsonl(example):
-        # Load image only when accessed
-        image = PIL.Image.open(example['image_path'])
-        
-        # Create the prompt structure
-        prompt = [{
-            'role': 'user',
-            'content': [
-                {'type': 'image', 'text': None},
-                {'type': 'text', 'text': example['problem'] + '  Output the thinking process in <think> </think> and final answer (number) in <answer> </answer> tags.'}
-            ]
-        }]
-        
+        # Don't load image here, just store the path
         return {
-            'image': image,
+            'image_path': example['image_path'],  # Store path instead of loaded image
             'problem': example['problem'],
             'solution': f"<answer> {example['solution']} </answer>",
-            'prompt': prompt
+            'prompt': [{
+                'role': 'user',
+                'content': [
+                    {'type': 'image', 'text': None},
+                    {'type': 'text', 'text': example['problem'] + '  Output the thinking process in <think> </think> and final answer (number) in <answer> </answer> tags.'}
+                ]
+            }]
         }
 
     # Map the conversations
-    dataset = dataset.map(make_conversation_from_jsonl)
+    dataset = dataset.map(make_conversation_from_jsonl, num_proc=8)
     
     # Split dataset for validation if requested
     splits = {'train': dataset}
