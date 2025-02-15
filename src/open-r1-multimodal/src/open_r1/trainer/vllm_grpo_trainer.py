@@ -167,6 +167,7 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
                     "Invalid `torch_dtype` passed to `GRPOConfig`. Expected either 'auto' or a string representing "
                     f"a `torch.dtype` (e.g., 'float32'), but got {torch_dtype}."
                 )
+            model_init_kwargs["torch_dtype"] = torch.bfloat16 # hardcoded because GRPOConfig has no torch_dtype
             # Disable caching if gradient checkpointing is enabled (not supported)
             model_init_kwargs["use_cache"] = (
                 False
@@ -328,6 +329,7 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
                 )
                 pad_token_id = processing_class.pad_token_id
 
+        print("Trainer Args: ", args)
         super().__init__(
             model=model,
             args=args,
