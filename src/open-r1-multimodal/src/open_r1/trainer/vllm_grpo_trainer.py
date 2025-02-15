@@ -518,13 +518,27 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
         device = self.accelerator.device
         prompts = [x["prompt"] for x in inputs]
         
-        # Handle both pre-loaded images and image paths
+        # Handle both pre-loaded images and image paths, with minimum size enforcement
         images = []
         for x in inputs:
             if "image" in x:
-                images.append(x["image"])
+                img = x["image"]
             else:
-                images.append(PIL.Image.open(x["image_path"]))
+                img = PIL.Image.open(x["image_path"])
+                
+            # Ensure minimum dimensions of 28 pixels
+            w, h = img.size
+            if w < 28 or h < 28:
+                # Calculate new dimensions maintaining aspect ratio
+                if w < h:
+                    new_w = 28
+                    new_h = int(h * (28/w))
+                else:
+                    new_h = 28
+                    new_w = int(w * (28/h))
+                img = img.resize((new_w, new_h), PIL.Image.Resampling.LANCZOS)
+                
+            images.append(img)
             
         prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs]
         
