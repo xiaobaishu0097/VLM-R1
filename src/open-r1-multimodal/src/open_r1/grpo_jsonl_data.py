@@ -14,6 +14,7 @@
 
 import os
 import re
+import pathlib
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Optional
@@ -25,7 +26,7 @@ from math_verify import parse, verify
 from open_r1.trainer import Qwen2VLGRPOTrainer, Qwen2VLGRPOVLLMTrainer
 from trl import GRPOConfig, GRPOTrainer, ModelConfig, ScriptArguments, TrlParser, get_peft_config
 import PIL
-from Levenshtein import ratio 
+from Levenshtein import ratio
 
 @dataclass
 class GRPOScriptArguments(ScriptArguments):
@@ -216,7 +217,10 @@ def main(script_args, training_args, model_args):
     )
 
     # Train and push the model to the Hub
-    trainer.train()
+    if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
+        trainer.train(resume_from_checkpoint=True)
+    else:
+        trainer.train()
 
     # Save and push to hub
     trainer.save_model(training_args.output_dir)

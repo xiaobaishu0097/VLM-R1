@@ -329,7 +329,7 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
                 )
                 pad_token_id = processing_class.pad_token_id
 
-        print("Trainer Args: ", args)
+        # print("Trainer Args: ", args)
         super().__init__(
             model=model,
             args=args,
