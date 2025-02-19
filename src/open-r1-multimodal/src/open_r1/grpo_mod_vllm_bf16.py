@@ -22,7 +22,7 @@ from datasets import load_dataset, load_from_disk
 from transformers import Qwen2VLForConditionalGeneration
 
 from math_verify import parse, verify
-from open_r1.trainer import Qwen2VLGRPOTrainer, Qwen2VLGRPOVLLMTrainer, Qwen2VLGRPOVLLMTrainerModified, Qwen2VLGRPOVLLMTrainerModifiedBf16, Qwen2VLGRPOVLLMTrainerModifiedOptimizedBf16
+from open_r1.trainer import Qwen2VLGRPOTrainer, Qwen2VLGRPOVLLMTrainer, Qwen2VLGRPOVLLMTrainerModified, Qwen2VLGRPOVLLMTrainerModifiedBf16
 from trl import GRPOConfig, GRPOTrainer, ModelConfig, ScriptArguments, TrlParser, get_peft_config
 
 
@@ -34,8 +34,6 @@ class GRPOScriptArguments(ScriptArguments):
     Args:
         reward_funcs (`list[str]`):
             List of reward functions. Possible values: 'accuracy', 'format'.
-        vlm_trainer (`str`):
-            Choose VLM trainer type: 'default', 'modified', 'modified_bf16', or 'modified_optimized_bf16'.
     """
 
     reward_funcs: list[str] = field(
@@ -49,13 +47,6 @@ class GRPOScriptArguments(ScriptArguments):
     min_pixels: Optional[int] = field(
         default=3136,
         metadata={"help": "Minimum number of pixels for the image"},
-    )
-    vlm_trainer: Optional[str] = field(
-        default="default",
-        metadata={
-            "help": "Choose VLM trainer type: 'default', 'modified', 'modified_bf16', or 'modified_optimized_bf16'",
-            "choices": ["default", "modified", "modified_bf16", "modified_optimized_bf16"]
-        },
     )
 
 
@@ -191,19 +182,8 @@ def main(script_args, training_args, model_args):
         dataset = dataset.map(make_conversation)
         dataset = dataset.remove_columns("messages")
 
-    # Select trainer class based on vlm_trainer argument
-    if training_args.use_vllm:
-        if script_args.vlm_trainer == "modified":
-            trainer_cls = Qwen2VLGRPOVLLMTrainerModified
-        elif script_args.vlm_trainer == "modified_bf16":
-            trainer_cls = Qwen2VLGRPOVLLMTrainerModifiedBf16
-        elif script_args.vlm_trainer == "modified_optimized_bf16":
-            trainer_cls = Qwen2VLGRPOVLLMTrainerModifiedOptimizedBf16
-        else:  # "default"
-            trainer_cls = Qwen2VLGRPOVLLMTrainer
-    else:
-        trainer_cls = Qwen2VLGRPOTrainer
-    print("using trainer:", trainer_cls.__name__)
+    trainer_cls = Qwen2VLGRPOTrainer if not training_args.use_vllm else Qwen2VLGRPOVLLMTrainerModifiedBf16
+    print("using: ", trainer_cls)
 
     # Initialize the GRPO trainer
     trainer = trainer_cls(
