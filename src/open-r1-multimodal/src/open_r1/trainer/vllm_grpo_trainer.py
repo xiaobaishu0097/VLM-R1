@@ -79,7 +79,7 @@ from torch.utils.data import Sampler
 RewardFunc = Union[str, PreTrainedModel, Callable[[list, list], list[float]]]
 
 
-class Qwen2VLGRPOVLLMTrainerModifiedBf16(Trainer):
+class Qwen2VLGRPOVLLMTrainer(Trainer):
     def __init__(
         self,
         model: Union[str, PreTrainedModel],
