@@ -79,7 +79,7 @@ from torch.utils.data import Sampler
 RewardFunc = Union[str, PreTrainedModel, Callable[[list, list], list[float]]]
 
 
-class Qwen2VLGRPOVLLMTrainer(Trainer):
+class Qwen2VLGRPOVLLMTrainerModifiedBf16(Trainer):
     def __init__(
         self,
         model: Union[str, PreTrainedModel],
@@ -479,40 +479,41 @@ class Qwen2VLGRPOVLLMTrainer(Trainer):
                     llm_model.load_weights(state_dict.items())
                 self._last_loaded_step = self.state.global_step
 
-            # Generate completions using vLLM: gather all prompts and use them in a single call
+            # Generate completions using vLLM: gather all prompts and use them in a single call in the main process
             all_prompts_text = gather_object(prompts_text)
             all_images = gather_object(images)
+            # group into pairs
+            all_multimodal_inputs = []
+            for prompt, image in zip(all_prompts_text, all_images):
+                for _ in range(self.num_generations):
+                    all_multimodal_inputs.append({"prompt": prompt, "multi_modal_data": {"image": image}})
 
-            # Prepare all inputs = global batch size
-            all_multimodal_inputs = [{"prompt": prompt, "multi_modal_data": {"image": image}} for prompt, image in zip(all_prompts_text, all_images)]
-
-            # Create sampling params with num_generations
-            if self.accelerator.is_main_process:
-                # Clone sampling params and set n
-                sampling_params = copy.deepcopy(self.sampling_params)
-                sampling_params.n = self.num_generations
-            else:
-                sampling_params = None
-
-            # Single generate call with all prompts
-            if self.accelerator.is_main_process:
-                outputs = self.llm.generate(
-                    all_multimodal_inputs,
-                    sampling_params=sampling_params,
-                    use_tqdm=False,
-                )
-                # Flatten outputs: [prompt1_gen1, prompt1_gen2..., prompt2_gen1, prompt2_gen2...]
-                completion_ids = [out.token_ids for completion in outputs for out in completion.outputs]
-            else:
-                completion_ids = [None] * len(all_multimodal_inputs) * self.num_generations
-
+            # NOTE: The sampling should be divided into `num_generations` batches, 
+            # otherwise the sampling of each prompt will be the same
+            all_completion_ids = [None] * len(all_multimodal_inputs)
+            for i in range(self.num_generations):
+                # Get the inputs for the current batch
+                batch_inputs = [all_multimodal_inputs[j] for j in range(i, len(all_multimodal_inputs), self.num_generations)]
+                if self.accelerator.is_main_process:
+                    outputs = self.llm.generate(
+                        batch_inputs,
+                        sampling_params=self.sampling_params,
+                        use_tqdm=False,
+                    )
+                    batch_completion_ids = [out.token_ids for completions in outputs for out in completions.outputs]
+                else:
+                    batch_completion_ids = [None] * len(batch_inputs)
+                # Place the results back into their original positions
+                for idx, completion_id in enumerate(batch_completion_ids):
+                    all_completion_ids[i + idx * self.num_generations] = completion_id
+            completion_ids = all_completion_ids
+            
             completion_ids = broadcast_object_list(completion_ids, from_process=0)
             process_slice = slice(
                 self.accelerator.process_index * len(prompts) * self.num_generations,
                 (self.accelerator.process_index + 1) * len(prompts) * self.num_generations,
             )
             completion_ids = completion_ids[process_slice]
-
             # Pad the completions, and concatenate them with the prompts
             completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids]
             completion_ids = pad(

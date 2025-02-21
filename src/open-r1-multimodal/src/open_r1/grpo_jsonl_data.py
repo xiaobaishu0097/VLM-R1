@@ -23,10 +23,57 @@ from datasets import load_dataset, load_from_disk
 from transformers import Qwen2VLForConditionalGeneration
 
 from math_verify import parse, verify
-from open_r1.trainer import Qwen2VLGRPOTrainer, Qwen2VLGRPOVLLMTrainer
+from open_r1.trainer import Qwen2VLGRPOTrainer, Qwen2VLGRPOVLLMTrainer, Qwen2VLGRPOVLLMTrainerModified, Qwen2VLGRPOVLLMTrainerModifiedBf16, Qwen2VLGRPOVLLMTrainerModifiedOptimizedBf16
 from trl import GRPOConfig, GRPOTrainer, ModelConfig, ScriptArguments, TrlParser, get_peft_config
 import PIL
 from Levenshtein import ratio
+
+
+# ----------------------- Fix the flash attention bug in the current version of transformers -----------------------
+from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLVisionFlashAttention2, apply_rotary_pos_emb_flashatt, flash_attn_varlen_func
+import torch
+from typing import Tuple
+from transformers.utils import logging
+
+logger = logging.get_logger(__name__)
+
+def custom_forward(
+        self,
+        hidden_states: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        rotary_pos_emb: Optional[torch.Tensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        seq_length = hidden_states.shape[0]
+        q, k, v = self.qkv(hidden_states).reshape(seq_length, 3, self.num_heads, -1).permute(1, 0, 2, 3).unbind(0)
+        # print(111, 222, 333, 444, 555, 666, 777, 888, 999)
+        if position_embeddings is None:
+            logger.warning_once(
+                "The attention layers in this model are transitioning from computing the RoPE embeddings internally "
+                "through `rotary_pos_emb` (2D tensor of RoPE theta values), to using externally computed "
+                "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.54 `rotary_pos_emb` will be "
+                "removed and `position_embeddings` will be mandatory."
+            )
+            emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
+            cos = emb.cos().float()
+            sin = emb.sin().float()
+        else:
+            cos, sin = position_embeddings
+            # Add this
+            cos = cos.to(torch.float)
+            sin = sin.to(torch.float)
+        q, k = apply_rotary_pos_emb_flashatt(q.unsqueeze(0), k.unsqueeze(0), cos, sin)
+        q = q.squeeze(0)
+        k = k.squeeze(0)
+
+        max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
+        attn_output = flash_attn_varlen_func(q, k, v, cu_seqlens, cu_seqlens, max_seqlen, max_seqlen).reshape(
+            seq_length, -1
+        )
+        attn_output = self.proj(attn_output)
+        return attn_output
+
+Qwen2_5_VLVisionFlashAttention2.forward = custom_forward
 
 @dataclass
 class GRPOScriptArguments(ScriptArguments):
@@ -60,6 +107,13 @@ class GRPOScriptArguments(ScriptArguments):
     min_pixels: Optional[int] = field(
         default=3136,
         metadata={"help": "Minimum number of pixels for the image"},
+    )
+    vlm_trainer: Optional[str] = field(
+        default="default",
+        metadata={
+            "help": "Choose VLM trainer type: 'default', 'modified', 'modified_bf16', or 'modified_optimized_bf16'",
+            "choices": ["default", "modified", "modified_bf16", "modified_optimized_bf16"]
+        },
     )
 
 
@@ -200,8 +254,19 @@ def main(script_args, training_args, model_args):
         splits['train'] = train_val_split['train']
         splits['validation'] = train_val_split['test']
 
-    trainer_cls = Qwen2VLGRPOTrainer if not training_args.use_vllm else Qwen2VLGRPOVLLMTrainer
-    print("using: ", trainer_cls)
+    # Select trainer class based on vlm_trainer argument
+    if training_args.use_vllm:
+        if script_args.vlm_trainer == "modified":
+            trainer_cls = Qwen2VLGRPOVLLMTrainerModified
+        elif script_args.vlm_trainer == "modified_bf16":
+            trainer_cls = Qwen2VLGRPOVLLMTrainerModifiedBf16
+        elif script_args.vlm_trainer == "modified_optimized_bf16":
+            trainer_cls = Qwen2VLGRPOVLLMTrainerModifiedOptimizedBf16
+        else:  # "default"
+            trainer_cls = Qwen2VLGRPOVLLMTrainer
+    else:
+        trainer_cls = Qwen2VLGRPOTrainer
+    print("using trainer:", trainer_cls.__name__)
 
     # Initialize the GRPO trainer
     trainer = trainer_cls(
