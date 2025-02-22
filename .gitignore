@@ -186,3 +186,5 @@ test/
 images_eval/
 *.zip
 *.txt
+
+work_dirs/*
