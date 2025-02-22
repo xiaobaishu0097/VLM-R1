@@ -176,6 +176,7 @@ def generate_optimal_navigation_regulations(
                         "width": environment.observation_width,
                         "id": copy.deepcopy(instruction_id),
                         "dataset_name": "ithor",
+                        "image_name": f"{instruction_id}.png",
                         "position": copy.deepcopy(position),
                         "optimal_action": copy.deepcopy(optimal_action),
                         "historical_actions": copy.deepcopy(historical_actions),

@@ -1,0 +1,17 @@
+environment:
+  status: online # status (str, optional): Specifies the status of the environment. Defaults to offline. Optional values are ['online', 'offline'].
+
+  online_environment:
+    observation_width: 300 # observation_width (int, optional): Specifies the width of the observation. Defaults to 300.
+    observation_height: 300 # observation_height (int, optional): Specifies the height of the observation. Defaults to 300.
+
+    randomize_materials: False # randomize_materials (bool, optional): Specifies whether to randomize materials. Defaults to False.
+    randomize_lighting: False # randomize_lighting (bool, optional): Specifies whether to randomize lighting. Defaults to False.
+    randomize_spawn: False # randomize_spawn (bool, optional): Specifies whether to randomize spawn. Defaults to False.
+    randomize_colors: False # randomize_colors (bool, optional): Specifies whether to randomize colors. Defaults to False.
+
+    boundingbox_size_threshold: 100 # boundingbox_size_threshold (int, optional): Specifies the size threshold for bounding boxes. Defaults to 100.
+    surrounding_distance_threshold: 0.5 # surrounding_distance_threshold (float, optional): Specifies the distance threshold for surrounding objects. Defaults to 0.5.
+
+  offline_environment:
+    environment_data_dir: ./data/offline_environments/ai2thor/ithor # environment_dir (str, optional): Specifies the directory of the offline environments. Defaults to ./data/offline_environments.
