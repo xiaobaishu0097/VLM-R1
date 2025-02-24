@@ -1,145 +1,32 @@
-# R1-V: Reinforcing Super Generalization Ability in Vision Language Models with Less Than $3
+# VLM-R1: A stable and generalizable R1-style Large Vision-Language Model
+<font size=4><div align='center' > [[🤗 Demo](https://huggingface.co/spaces/omlab/VLM-R1-Referral-Expression)] </div></font>
 
-![image](https://github.com/user-attachments/assets/c52a448f-d666-4ca6-958b-86267d56de0e) 
+<img src="./assets/performance.png" width="600"/>
 
-> ### Roadmap for R1-V
-> We are building a general framework for RLVR in VLM. We believe in the power of **trenches** and **longtermism**.
->
-> Our Interest: General Vision-Language Intelligence & Visual/GUI Agent
-> 
-> Our Goal: 🔄 Algorithm Enhancement ⚡ Efficiency Optimization 🎯 Task Diversity 🌲 Impactful Open Source Research. 
->
-> Welcome Ideas and Contribution. Stay tuned!
+Since the introduction of [Deepseek-R1](https://github.com/deepseek-ai/DeepSeek-R1), numerous works have emerged focusing on reproducing and improving upon it. In this project, we propose VLM-R1, a stable and generalizable R1-style Large Vision-Language Model. 
 
-
-1. We firstly reveal that **Reinforcement Learning with Verifiable Rewards (RLVR)** outperforms chain-of-thought supervised fine-tuning (CoT-SFT) in both **effectiveness and out-of-distribution (OOD) robustness** for vision language models.
-
-2. In our experiment, we **incentivize** VLMs to learn **generalizable** visual counting abilities, rather than overfitting to the training set.
-
-3. The 2B model outperforms the 72B model in OOD tests within just **100** training steps.
-
-4. The training was conducted on 8 A100 GPUs for **30 minutes, costing $2.62**.
-
-**Resources:** 
-
-[🤗 R1V Training Dataset: CLEVR-70k](https://huggingface.co/datasets/leonardPKU/clevr_cogen_a_train)
-
-[🤗 R1V Training Dataset: GEOQA-8k](https://huggingface.co/datasets/leonardPKU/GEOQA_R1V_Train_8K)
-
-[🤗 R1-Distilled Visual Reasoning Dataset](https://huggingface.co/datasets/MMInstruction/Clevr_CoGenT_TrainA_R1)
-
-**R1-V Team:** 
-
-[Liang Chen](https://github.com/chenllliang) · [Lei Li](https://lilei-nlp.github.io) · [Haozhe Zhao](https://haozhezhao.github.io/) · [Yifan Song](https://github.com/Yifan-Song793) · [Vinci](https://github.com/0xvincii) · [Zihao Yue](https://yuezih.github.io/) 
-
-**Contributors**:
-
-<a href="https://github.com/Deep-Agent/R1-V/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Deep-Agent/R1-V" />
-</a>
-
-
-
----
-
-### Updates
-
-- 2025-02-11: R1-V now supports Qwen2.5-VL and [GEOQA](https://arxiv.org/abs/2312.11370) task.
-- 2025-02-06: We upload the evaluation script and polish the README. We are writing a blog post summarizing the statistics, findings and underexplored questions. 
-- 2025-02-03: We upload the training codebase.
-- 2025-02-03: We curate and upload some verified Deepseek-R1 visual reasoning traces with some special tricks (see `R1-V/src/distill_r1/`). Current training code does not rely on it, feel free to explore.
-- 2025-02-03: We release the R1-V repo.
-
-### For contributors
-- Our top development priority is addressing the issues marked with `help wanted` labels, and we welcome ideas/PRs from the community to help solve them.
-
----
-
-
-![Image](https://github.com/user-attachments/assets/e86a3ff2-a9c6-4548-8200-6c3c382d60e6)
-
-![Image](https://github.com/user-attachments/assets/b3512920-ef30-4d6d-9bfe-c64e4570a067)
-
-![image](https://github.com/user-attachments/assets/42b79f44-1c09-4c22-bad9-17ec2a0a1d10)
-
-![image](https://github.com/user-attachments/assets/f5191b1e-dde2-42b7-9ec9-10f7f6213c12)
+Specifically, for the task of Referring Expression Comprehension (REC), we trained [Qwen2.5-VL](https://github.com/QwenLM/Qwen2.5-VL) using both R1 and SFT approaches. The results reveal that, on the in-domain test data, the performance of the SFT model is slightly lower than that of the R1 model (as shown at the top of the figure above). However, on the out-of-domain test data, the SFT model’s performance deteriorates significantly as the number of steps increases, while the R1 model shows a steady improvement (as shown at the bottom of the figure above).
 
 
 ## Setup
 
 ```bash
+conda create -n vlm-r1 python=3.10
+conda activate vlm-r1
 bash setup.sh
 ```
 
-### Supported Models
-
-1. Qwen2-VL
-2. Qwen2.5-VL 
-
-### Supported Training Datasets
-
-1. [🤗 R1V Training Dataset: CLEVR-70k](https://huggingface.co/datasets/leonardPKU/clevr_cogen_a_train)
-
-2. [🤗 R1V Training Dataset: GEOQA-8k](https://huggingface.co/datasets/leonardPKU/GEOQA_R1V_Train_8K)
-
-
-### Supported Evaluations
-
-1. [SuperClevr-200](https://github.com/Deep-Agent/R1-V?tab=readme-ov-file#superclevr)
-2. [GeoQA-Test-Direct-Answer-735](https://github.com/Deep-Agent/R1-V?tab=readme-ov-file#geoqa)
-
 ## Training
-
-### Counting VQA
-> 1. Download the training data [🤗 Train Dataset: CLEVR-70k](https://huggingface.co/datasets/leonardPKU/clevr_cogen_a_train)
-
-> 2. ```bash src/open-r1-multimodal/run_grpo.sh```
-
-```bash
-cd src/open-r1-multimodal
-
-export DEBUG_MODE="true" # Enable Debug if you want to see the rollout of model during RL
-export LOG_PATH="./debug_log_2b.txt"
-
-torchrun --nproc_per_node="8" \
-    --nnodes="1" \
-    --node_rank="0" \
-    --master_addr="127.0.0.1" \
-    --master_port="12345" \
-    src/open_r1/grpo.py \
-    --output_dir <OUTPUT_DIR> \
-    --model_name_or_path <PATH-TO-Qwen2-VL-2B-Instruct> \ # Currently supported models: Qwen2-VL, Qwen2.5-VL
-    --dataset_name leonardPKU/clevr_cogen_a_train \  # Currently supported datasets: leonardPKU/clevr_cogen_a_train, leonardPKU/GEOQA_R1V_Train_8K
-    --deepspeed local_scripts/zero3.json \
-    --max_prompt_length 512 \
-    --max_completion_length 512 \
-    --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 2 \
-    --logging_steps 1 \
-    --bf16 \
-    --report_to wandb \
-    --gradient_checkpointing false \
-    --attn_implementation flash_attention_2 \
-    --max_pixels 401408 \
-    --num_train_epochs 2 \
-    --run_name Qwen2-VL-2B-GRPO-CLEVR-70k \
-    --save_steps 100 \
-    --save_only_model true \
-    --num_generations 8   # number of outputs G in grpo, reduce it would lead to faster training and smaller memory cost but higher variance  
-
-```
-
-> [!NOTE] 
-> 1. To reproduce the result, keep the per_device_train_batch_size to 1 for now, as there is a revealed bug about batched training. See the [reproduction report](https://github.com/Deep-Agent/R1-V/issues/4#issuecomment-2633348354) here. We realize it is important for effiency and are working on solving it with the community.
-> 2. If you meet **OOM Error**, you can try reduce `--num_generations`
 
 ### Referring Expression Comprehension (REC)
 
-> 1. Download the [COCO Train2014 image](http://images.cocodataset.org/zips/train2014.zip).
+#### GRPO
 
-> 2. Download the [RefCOCO/+/g Annotation files](https://huggingface.co/datasets/SZhanZ/mmc4_jsonl/resolve/main/rec_jsons_processed.zip)
+> 1. Download the [COCO Train2014 image](https://huggingface.co/datasets/omlab/VLM-R1/resolve/main/train2014.zip) and unzip it, and we refer to the image dir as `<your_image_root>`.
 
-> 3. Write the path of the annotation files in the `data_script/rec.yaml` file.
+> 2. Download the [RefCOCO/+/g and RefGTA Annotation files](https://huggingface.co/datasets/omlab/VLM-R1/resolve/main/rec_jsons_processed.zip) and unzip it (RefGTA is used for out-of-domain evaluation).
+
+> 3. Write the path of the annotation files in the `src/open-r1-multimodal/data_config/rec.yaml` file.
 ```bash
 datasets:
     - json_path: /path/to/refcoco_train.json
@@ -152,25 +39,19 @@ datasets:
 ```bash
 cd src/open-r1-multimodal
 
-export DEBUG_MODE="true"
-# export CUDA_VISIBLE_DEVICES=4,5,6,7
-
-RUN_NAME="Qwen2-VL-2B-GRPO-REC"
-export LOG_PATH="./debug_log_$RUN_NAME.txt"
-
 torchrun --nproc_per_node="8" \
     --nnodes="1" \
     --node_rank="0" \
     --master_addr="127.0.0.1" \
-    --master_port="12345" \
+    --master_port="12346" \
     src/open_r1/grpo_rec.py \
-    --deepspeed ./local_scripts/zero3.json \
-    --output_dir <OUTPUT_DIR>/$RUN_NAME \
-    --model_name_or_path <PATH-TO-Model> \
-    --dataset_name ./data_script/rec.yaml \
-    --image_root <PATH-TO-Image-Root> \
+    --deepspeed local_scripts/zero3.json \
+    --output_dir output/$RUN_NAME \
+    --model_name_or_path Qwen/Qwen2.5-VL-3B-Instruct \
+    --dataset_name data_config/rec.yaml \
+    --image_root <your_image_root> \
     --max_prompt_length 1024 \
-    --num_generations 8 \ # Could be reduced for faster training
+    --num_generations 8 \
     --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 2 \
     --logging_steps 1 \
@@ -180,89 +61,93 @@ torchrun --nproc_per_node="8" \
     --report_to wandb \
     --gradient_checkpointing false \
     --attn_implementation flash_attention_2 \
-    --max_pixels 401408 \
     --num_train_epochs 2 \
     --run_name $RUN_NAME \
     --save_steps 100 \
     --save_only_model true
 ```
+![image](./assets/iou.jpg)
+![image](./assets/wandb.jpg)
 
+
+#### SFT
+We use [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) to train the SFT model.
+> 1. Clone the [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) repository and install the dependencies.
+```bash
+git clone https://github.com/hiyouga/LLaMA-Factory.git
+cd LLaMA-Factory
+pip install -e ".[torch,metrics]"
+```
+
+> 2. Download the dataset_info.json, mllm_rec_json.json, and qwen2_5_vl_full_sft.yaml we provided [here](https://huggingface.co/datasets/omlab/VLM-R1/tree/main/sft_related). Put the json files in the `LLaMA-Factory/data` directory and the yaml file in the `LLaMA-Factory/examples/train_full` directory.
+
+> 3. Run the following command to train the SFT model.
+```bash
+llamafactory-cli train examples/train_full/qwen2_5_vl_full_sft.yaml
+```
+
+### For you own data
+We also support data loading the jsonl data of this format in [`src/open-r1-multimodal/src/open_r1/grpo_jsonl.py`](src/open-r1-multimodal/src/open_r1/grpo_jsonl.py). Please note that you may need to use different reward functions for your specialized tasks. Welcome to PR to add your own reward functions or share any other interesting findings!
+
+The jsonl has the format as follows:
+```json
+{"id": 1, "image": "Clevr_CoGenT_TrainA_R1/data/images/CLEVR_trainA_000001_16885.png", "conversations": [{"from": "human", "value": "<image>What number of purple metallic balls are there?"}, {"from": "gpt", "value": "0"}]}
+```
+
+Note: The image path in the jsonl file should be relative to the image folder specified in `--image_folders`. The absolute path of the input image is constructed as `os.path.join(image_folder, data['image'])`. For example:
+- If your jsonl has `"image": "folder1/image1.jpg"`
+- And you specify `--image_folders "/path/to/images/"`
+- The full image path will be `/path/to/images/folder1/image1.jpg`
+
+Multiple data files and image folders can be specified using ":" as a separator:
+```bash
+--data_file_paths /path/to/data1.jsonl:/path/to/data2.jsonl \
+--image_folders /path/to/images1/:/path/to/images2/
+```
+
+The script can be run like this:
+```bash
+torchrun --nproc_per_node="8" \
+    --nnodes="1" \
+    --node_rank="0" \
+    --master_addr="127.0.0.1" \
+    --master_port="12345" \
+  src/open_r1/grpo_jsonl.py \
+    --output_dir output/$RUN_NAME \
+    --model_name_or_path Qwen/Qwen2.5-VL-3B-Instruct \
+    --deepspeed local_scripts/zero3.json \
+    --dataset_name <your_dataset_name> \
+    --data_file_paths /path/to/your/data.jsonl \ # can be multiple, seperated by ":"
+    --image_folders /path/to/your/image/folder/ \ # can be multiple, seperated by ":"
+    ...
+```
 ## Evaluation
 
+![image](./assets/data.png)
 
-### SuperCLEVR
-
-![image](https://github.com/user-attachments/assets/4f48233c-0546-432f-94e6-723f91fbd086)
-
-We provide the example script to evaluate OOD counting performance on a subset of SuperCLEVR within 1 minute. You can also modify the script and dataset to test on your own dataset.
-
-
-
+> 1. Download the provided [RefGTA images](https://huggingface.co/datasets/omlab/VLM-R1/resolve/main/refgta.zip).
 ```bash
 cd ./src/eval
-wget https://www.cs.jhu.edu/~zhuowan/zhuowan/SuperCLEVR/to_be_released/images.zip
-unzip images.zip
 
-# change the model path in the script
-python test_qwen2vl_counting_superclevr.py 
-
-# tested scores: 
-# Qwen2VL-2B-Instruct: 48.0%
-# Qwen2VL-2B-Instruct-GRPO-100step: 82.5%
+# Remember to change the model path, image root, and annotation path in the script
+python test_rec_r1.py # for GRPO
+python test_rec_baseline.py # for SFT
 ```
-
-### GEOQA
-
-<img width="379" alt="截屏2025-02-11 13 38 50" src="https://github.com/user-attachments/assets/0282872d-bfe5-40fa-ac00-8986450a0b1e" />
-<img width="379" alt="截屏2025-02-11 14 54 16" src="https://github.com/user-attachments/assets/053ebb99-5f19-4599-be51-a7c335ab2b8b" />
-
-
-
-We provide the example script to evaluate on the test set (direct answer form) of [GEOQA](https://arxiv.org/abs/2312.11370).
-
-
-```bash
-# prepare images for testing
-cd ./src/eval
-git lfs install
-git clone https://huggingface.co/datasets/Luckyjhg/Geo170K
-cd Geo170K
-unzip images.zip
-
-
-# change the model path in the script
-python test_qwen2vl_geoqa.py 
-
-# tested scores: 
-# Qwen2VL-7B-Instruct: 30.63%
-# Qwen2VL-7B-Instruct-GRPO-2epochs: 38.72%
-
-# Qwen2.5VL-3B-Instruct: 35.41%
-# Qwen2.5VL-3B-Instruct-GRPO-1epochs: 47.48%
-```
-
-
 
 ## Acknowledgements
 
-We sincerely thank [DeepSeek](https://github.com/deepseek-ai/DeepSeek-R1), [Open-R1](https://github.com/huggingface/open-r1), [QwenVL](https://github.com/QwenLM/Qwen2.5-VL), [Open-R1-Multimodal](https://github.com/EvolvingLMMs-Lab/open-r1-multimodal) (our initial codebase), [CLEVR](https://cs.stanford.edu/people/jcjohns/clevr/), [SuperCLEVR](https://github.com/Lizw14/Super-CLEVR), [G-LLAVA](https://arxiv.org/abs/2312.11370) for providing open source resources and to build the project. 
+We would like to express our sincere gratitude to [DeepSeek](https://github.com/deepseek-ai/DeepSeek-R1), [Open-R1](https://github.com/huggingface/open-r1), [QwenVL](https://github.com/QwenLM/Qwen2.5-VL), [Open-R1-Multimodal](https://github.com/EvolvingLMMs-Lab/open-r1-multimodal), [R1-V](https://github.com/Deep-Agent/R1-V), [RefCOCO](https://github.com/lichengunc/refer), and [RefGTA](https://github.com/mikittt/easy-to-understand-REG/tree/master/pyutils/refer2) for providing open-source resources that contributed to the development of this project.
 
 
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Deep-Agent/R1-V&type=Timeline)](https://star-history.com/#Deep-Agent/R1-V&Timeline)
 
 ## Citation
-
+If you find this project useful, welcome to cite us.
 ```bib
-@misc{chen2025r1v,
-  author       = {Chen, Liang and Li, Lei and Zhao, Haozhe and Song, Yifan and Vinci},
-  title        = {R1-V: Reinforcing Super Generalization Ability in Vision-Language Models with Less Than \$3},
-  howpublished = {\url{https://github.com/Deep-Agent/R1-V}},
-  note         = {Accessed: 2025-02-02},
+@misc{shen2025vlmr1,
+  author       = {Shen, Haozhan and Zhang, Zilun and Zhang, Qianqian and Xu, Ruochen and Zhao, Tiancheng},
+  title        = {VLM-R1: A stable and generalizable R1-style Large Vision-Language Model},
+  howpublished = {\url{https://github.com/om-ai-lab/VLM-R1}},
+  note         = {Accessed: 2025-02-15},
   year         = {2025}
 }
 ```
-
-
-
-
