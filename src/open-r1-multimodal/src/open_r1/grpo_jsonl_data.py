@@ -117,52 +117,109 @@ class GRPOScriptArguments(ScriptArguments):
     )
 
 
+def extract_choice(text):
+    
+    # 1. 清理和标准化文本
+    text = text.upper()  # 转大写
+    text = re.sub(r'\s+', ' ', text)  # 标准化空格
+    
+    # 2. 选项前面或者后面都应该不是大写字母
+    choices = re.findall(r'(?<![A-Z])([A-D])(?![A-Z])', text)
+    
+    if not choices:
+        return None
+        
+    # 3. 如果只有一个选项，直接返回
+    if len(choices) == 1:
+        return choices[0]
+        
+    # 4. 如果有多个选项，使用启发式规则
+    choice_scores = {choice: 0 for choice in choices}
+    
+    # 4.1 选项周围的关键词加分
+    keywords = [
+        '答案', '选择', '正确', '是', '对', 
+        'answer', 'correct', 'choose', 'select', 'right',
+        '认为', '应该', '觉得', 'think', 'believe', 'should'
+    ]
+    
+    # 获取每个选项的上下文（前后20个字符）
+    for choice in choices:
+        pos = text.find(choice)
+        context = text[max(0, pos-20):min(len(text), pos+20)]
+        
+        # 关键词加分
+        for keyword in keywords:
+            if keyword.upper() in context:
+                choice_scores[choice] += 1
+        
+        # 选项在末尾加分（通常最后给出的是最终答案）
+        if pos > len(text) * 0.7:  # 在文本后30%位置
+            choice_scores[choice] += 2
+            
+        # 选项后面有标点符号加分
+        if pos < len(text) - 1 and text[pos+1] in '。.!！,，':
+            choice_scores[choice] += 1
+            
+    # 返回得分最高的选项
+    return max(choice_scores.items(), key=lambda x: x[1])[0]
+
+
 def accuracy_reward(completions, solution, **kwargs):
-    """Reward function that checks if the completion is correct using symbolic verification, exact string matching, or fuzzy matching."""
     contents = [completion[0]["content"] for completion in completions]
     rewards = []
     current_time = datetime.now().strftime("%d-%H-%M-%S-%f")
+    
     for content, sol in zip(contents, solution):
         reward = 0.0
-        # Try symbolic verification first for numeric answers
+        
         try:
             answer = parse(content)
             if float(verify(answer, parse(sol))) > 0:
                 reward = 1.0
         except Exception:
-            pass  # Continue to next verification method if this fails
-
-        # If symbolic verification failed, try string matching or fuzzy matching
+            pass
+        
+        # 3. 如果前面都失败了，尝试字符串匹配
         if reward == 0.0:
             try:
-                # Extract answer from solution if it has think/answer tags
+                # 提取答案部分
                 sol_match = re.search(r'<answer>(.*?)</answer>', sol)
                 ground_truth = sol_match.group(1).strip() if sol_match else sol.strip()
                 
-                # Extract answer from content if it has think/answer tags
                 content_match = re.search(r'<answer>(.*?)</answer>', content, re.DOTALL)
                 student_answer = content_match.group(1).strip() if content_match else content.strip()
                 
-                # Check if ground truth contains any numbers
+                # 检查是否包含数字
                 has_numbers = bool(re.search(r'\d', ground_truth))
+                # 检查是否包含选项
+                has_choices = re.search(r'Answer:\s*([A-D])', sol, re.IGNORECASE)
                 
                 if has_numbers:
-                    # For numeric answers, use exact matching
+                    # 数值答案用精确匹配
                     reward = 1.0 if student_answer == ground_truth else 0.0
+                elif has_choices:
+                    # 选择题用提取选项的方法
+                    correct_choice = has_choices.group(1).upper()
+                    student_choice = extract_choice(student_answer)
+                    if student_choice:
+                        reward = 1.0 if student_choice == correct_choice else 0.0
                 else:
                     # For text answers, use fuzzy matching
                     reward = ratio(student_answer.lower(), ground_truth.lower())
                 
             except Exception:
-                pass  # Keep reward as 0.0 if all methods fail
-                
+                pass
+        
         rewards.append(reward)
+        
+        # 调试日志
         if os.getenv("DEBUG_MODE") == "true":
             log_path = os.getenv("LOG_PATH")
             with open(log_path, "a", encoding='utf-8') as f:
                 f.write(f"------------- {current_time} Accuracy reward: {reward} -------------\n")
                 f.write(f"Content: {content}\n")
-                f.write(f"Solution: {sol}\n")
+                f.write(f"Solution: {sol}\n")            
     return rewards
 
 
@@ -283,7 +340,7 @@ def main(script_args, training_args, model_args):
 
     # Train and push the model to the Hub
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
-        trainer.train(resume_from_checkpoint=True)
+        trainer.train(resume_from_checkpoint=False)
     else:
         trainer.train()
 
@@ -297,3 +354,4 @@ if __name__ == "__main__":
     parser = TrlParser((GRPOScriptArguments, GRPOConfig, ModelConfig))
     script_args, training_args, model_args = parser.parse_args_and_config()
     main(script_args, training_args, model_args)
+
