@@ -264,7 +264,10 @@ class Environment:
         return optimal_action
 
     def get_action_to_target(
-        self, target_id: str, graph: nx.DiGraph, navigation_path: Optional[list] = None
+        self,
+        target_id: Optional[str] = None,
+        graph: Optional[nx.DiGraph] = None,
+        navigation_path: Optional[list] = None,
     ) -> str:
         if navigation_path is None:
             object_visible_positions = self.object_visibility_map[target_id]

@@ -161,6 +161,7 @@ def generate_optimal_navigation_regulations(
                 historical_actions = []
                 for i_steps, position in enumerate(navigation_episodes):
                     instruction_id = f"{scene_id:05d}-{n_instruction:05d}-{i_steps:03d}"
+                    environment.teleport_agent(position)
 
                     target_relative_position = (
                         environment.get_target_relative_position()
@@ -170,13 +171,15 @@ def generate_optimal_navigation_regulations(
                     # convert numpy array to PIL image
                     agent_observation = Image.fromarray(agent_observation)
 
-                    optimal_action = environment.optimal_action
+                    optimal_action = environment.get_action_to_target(
+                        navigation_path=navigation_episodes[i_steps:]
+                    )
                     navigation_step = {
                         "height": environment.observation_height,
                         "width": environment.observation_width,
                         "id": copy.deepcopy(instruction_id),
                         "dataset_name": "ithor",
-                        "image_name": f"{instruction_id}.png",
+                        "image": f"{instruction_id}.png",
                         "position": copy.deepcopy(position),
                         "optimal_action": copy.deepcopy(optimal_action),
                         "historical_actions": copy.deepcopy(historical_actions),
@@ -210,6 +213,9 @@ def generate_optimal_navigation_regulations(
 
                     navigation_data.append(navigation_step)
                     historical_actions.append(optimal_action)
+
+                    if optimal_action == "Done":
+                        break
 
                 n_instruction += 1
                 if progress is not None:
