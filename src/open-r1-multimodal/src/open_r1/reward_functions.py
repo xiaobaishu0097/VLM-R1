@@ -11,7 +11,7 @@ def strict_format_reward_func(completions, **kwargs) -> list[float]:
     """Reward function that checks if the completion has a specific format."""
     pattern = r"^<reasoning>\n.*?\n</reasoning>\n<answer>\n.*?\n</answer>\n$"
     responses = [completion[0]["content"] for completion in completions]
-    matches = [re.match(pattern, r) for r in responses]
+    matches = [re.match(pattern, r, re.DOTALL) for r in responses]
     return [0.5 if match else 0.0 for match in matches]
 
 
@@ -19,7 +19,7 @@ def soft_format_reward_func(completions, **kwargs) -> list[float]:
     """Reward function that checks if the completion has a specific format."""
     pattern = r"<reasoning>.*?</reasoning>\s*<answer>.*?</answer>"
     responses = [completion[0]["content"] for completion in completions]
-    matches = [re.match(pattern, r) for r in responses]
+    matches = [re.match(pattern, r, re.DOTALL) for r in responses]
     return [0.5 if match else 0.0 for match in matches]
 
 
@@ -56,21 +56,21 @@ def action_selection_reward_func(completions, **kwargs):
     responses = [completion[0]["content"] for completion in completions]
 
     # Check each completion content against the pattern using re.fullmatch with DOTALL flag to include newlines
-    matches = [re.match(pattern, r) for r in responses]
+    matches = [re.match(pattern, r, re.DOTALL) for r in responses]
 
     # Return a reward of 1.0 if the content matches the pattern exactly, otherwise 0.0
     return [1.0 if match else 0.0 for match in matches]
 
 
-def optimal_action_reward_func(prompts, completions, answer, **kwargs):
+def optimal_action_reward_func(prompts, completions, solution, **kwargs):
     responses = [completion[0]["content"] for completion in completions]
     q = prompts[0][-1]["content"]
     extracted_responses = [extract_xml_answer(r) for r in responses]
     print(
         "-" * 20,
         f"Question:\n{q}",
-        f"\nAnswer:\n{answer[0]}",
+        f"\nAnswer:\n{solution[0]}",
         f"\nResponse:\n{responses[0]}",
         f"\nExtracted:\n{extracted_responses[0]}",
     )
-    return [2.0 if r == a else 0.0 for r, a in zip(extracted_responses, answer)]
+    return [2.0 if r == a else 0.0 for r, a in zip(extracted_responses, solution)]

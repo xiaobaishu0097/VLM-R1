@@ -34,7 +34,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from trl import GRPOConfig, ModelConfig, ScriptArguments, TrlParser, get_peft_config
 
-from .reward_functions import *
+from reward_functions import *
 
 
 @dataclass
@@ -83,11 +83,11 @@ reward_funcs_registry = {
 
 SYSTEM_PROMPT = (
     "A conversation between User and Assistant. The user asks a question, and the"
-    " Assistant solves it. The assistant first thinks about the reasoning process in"
+    " Assistant solves it. The assistant first reasons about the reasoning process in"
     " the mind and then provides the user with the answer. The reasoning process and"
-    " answer are enclosed within <think> </think> and <answer> </answer> tags,"
-    " respectively, i.e., <think> reasoning process here </think><answer> answer here"
-    " </answer>"
+    " answer are enclosed within <reasoning> </reasoning> and <answer> </answer> tags,"
+    " respectively, i.e., <reasoning>\nreasoning process here\n</reasoning>\n<answer>"
+    "\nanswer here\n</answer>\n"
 )
 
 
@@ -173,8 +173,8 @@ class LazySupervisedDataset(Dataset):
 
         QUESTION_TEMPLATE = (
             "{Question} Please select one of the navigation actions: MoveAhead,"
-            " RotateLeft, RotateRight, LookUp, LookDown, and Done. Output the thinking"
-            " process in <think> </think> and final answer in <answer> </answer> tags."
+            " RotateLeft, RotateRight, LookUp, LookDown, and Done. Output the reasoning"
+            " process in <reasoning> </reasoning> and final answer in <answer> </answer> tags."
         )
 
         def make_conversation_image(example):
