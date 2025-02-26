@@ -156,12 +156,12 @@ class LazySupervisedDataset(Dataset):
             return {
                 "prompt": [
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": example["problem"]},
+                    {"role": "user", "content": f"Please select the next navigation action towards the target: {example['target_id'].split('|')[0]}."},
                 ],
             }
 
         QUESTION_TEMPLATE = (
-            "{Question}  Output the thinking process in <think> </think> and final"
+            "{Question} Please select one of the navigation actions: MoveAhead, RotateLeft, RotateRight, LookUp, LookDown, and Done. Output the thinking process in <think> </think> and final"
             " answer in <answer> </answer> tags."
         )
 
@@ -176,7 +176,7 @@ class LazySupervisedDataset(Dataset):
                             {
                                 "type": "text",
                                 "text": QUESTION_TEMPLATE.format(
-                                    Question=example["problem"]
+                                    Question=f"Please select the next navigation action towards the target: {example['target_id'].split('|')[0]}."
                                 ),
                             },
                         ],
@@ -194,8 +194,8 @@ class LazySupervisedDataset(Dataset):
 
         return {
             "image": image,
-            "problem": example["problem"],
-            "solution": example["solution"],
+            "problem": f"Please select the next navigation action towards the target: {example['target_id'].split('|')[0]}.",
+            "solution": example['optimal_action'],
             "prompt": (
                 make_conversation_image(example)["prompt"]
                 if "image" in example
@@ -275,9 +275,28 @@ def format_reward(completions, **kwargs):
     return [1.0 if match else 0.0 for match in matches]
 
 
+def action_selection_reward(completions, **kwargs):
+    """Reward function that checks if the completion has chosen a valid navigation action in a specific format.
+    
+    The function expects the completion to contain a <think>...</think> section followed by an <answer>...</answer>
+    section, where the answer is exactly one of the following: MoveAhead, RotateLeft, RotateRight, LookUp, LookDown, or Done.
+    """
+    # Regular expression pattern that matches the required structure and valid answer options
+    pattern = r"<think>.*?</think>\s*<answer>\s*(MoveAhead|RotateLeft|RotateRight|LookUp|LookDown|Done)\s*</answer>"
+    
+    # Extract the content field from each completion
+    completion_contents = [completion[0]["content"] for completion in completions]
+    
+    # Check each completion content against the pattern using re.fullmatch with DOTALL flag to include newlines
+    matches = [re.fullmatch(pattern, content, re.DOTALL) for content in completion_contents]
+    
+    # Return a reward of 1.0 if the content matches the pattern exactly, otherwise 0.0
+    return [1.0 if match else 0.0 for match in matches]
+
 reward_funcs_registry = {
-    "accuracy": /,
+    "accuracy": iou_reward,
     "format": format_reward,
+    "action_selection_reward": action_selection_reward,
 }
 
 # reward_funcs_registry_2_5 = {
