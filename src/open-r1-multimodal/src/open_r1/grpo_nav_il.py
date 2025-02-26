@@ -25,25 +25,16 @@ import json
 import math
 import os
 import random
-import re
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Optional
 
 import yaml
-from math_verify import parse, verify
 from open_r1.trainer import Qwen2VLGRPOTrainer
 from PIL import Image
 from torch.utils.data import Dataset
-from transformers import Qwen2VLForConditionalGeneration, TrainingArguments
-from trl import (
-    GRPOConfig,
-    GRPOTrainer,
-    ModelConfig,
-    ScriptArguments,
-    TrlParser,
-    get_peft_config,
-)
+from trl import GRPOConfig, ModelConfig, ScriptArguments, TrlParser, get_peft_config
+
+from .reward_functions import *
 
 
 @dataclass
@@ -57,7 +48,13 @@ class GRPOScriptArguments(ScriptArguments):
     """
 
     reward_funcs: list[str] = field(
-        default_factory=lambda: ["accuracy", "format"],
+        default_factory=lambda: [
+            "soft_format",
+            "strict_format",
+            "xmlcount_reward_func",
+            "action_selection_reward",
+            "optimal_action_reward",
+        ],
         metadata={
             "help": "List of reward functions. Possible values: 'accuracy', 'format'"
         },
@@ -75,6 +72,14 @@ class GRPOScriptArguments(ScriptArguments):
         metadata={"help": "Root directory of the image"},
     )
 
+
+reward_funcs_registry = {
+    "soft_format": soft_format_reward_func,
+    "strict_format": strict_format_reward_func,
+    "xmlcount_reward_func": xmlcount_reward_func,
+    "action_selection_reward": action_selection_reward_func,
+    "optimal_action_reward": optimal_action_reward_func,
+}
 
 SYSTEM_PROMPT = (
     "A conversation between User and Assistant. The user asks a question, and the"
@@ -156,13 +161,20 @@ class LazySupervisedDataset(Dataset):
             return {
                 "prompt": [
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Please select the next navigation action towards the target: {example['target_id'].split('|')[0]}."},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Please select the next navigation action towards the"
+                            f" target: {example['target_id'].split('|')[0]}."
+                        ),
+                    },
                 ],
             }
 
         QUESTION_TEMPLATE = (
-            "{Question} Please select one of the navigation actions: MoveAhead, RotateLeft, RotateRight, LookUp, LookDown, and Done. Output the thinking process in <think> </think> and final"
-            " answer in <answer> </answer> tags."
+            "{Question} Please select one of the navigation actions: MoveAhead,"
+            " RotateLeft, RotateRight, LookUp, LookDown, and Done. Output the thinking"
+            " process in <think> </think> and final answer in <answer> </answer> tags."
         )
 
         def make_conversation_image(example):
@@ -176,7 +188,11 @@ class LazySupervisedDataset(Dataset):
                             {
                                 "type": "text",
                                 "text": QUESTION_TEMPLATE.format(
-                                    Question=f"Please select the next navigation action towards the target: {example['target_id'].split('|')[0]}."
+                                    Question=(
+                                        "Please select the next navigation action"
+                                        " towards the target:"
+                                        f" {example['target_id'].split('|')[0]}."
+                                    )
                                 ),
                             },
                         ],
@@ -194,8 +210,11 @@ class LazySupervisedDataset(Dataset):
 
         return {
             "image": image,
-            "problem": f"Please select the next navigation action towards the target: {example['target_id'].split('|')[0]}.",
-            "solution": example['optimal_action'],
+            "problem": (
+                "Please select the next navigation action towards the target:"
+                f" {example['target_id'].split('|')[0]}."
+            ),
+            "solution": example["optimal_action"],
             "prompt": (
                 make_conversation_image(example)["prompt"]
                 if "image" in example
@@ -204,113 +223,7 @@ class LazySupervisedDataset(Dataset):
         }
 
 
-def iou_reward(completions, solution, **kwargs):
-    def iou(box1, box2):
-        inter_x1 = max(box1[0], box2[0])
-        inter_y1 = max(box1[1], box2[1])
-        inter_x2 = min(box1[2] - 1, box2[2] - 1)
-        inter_y2 = min(box1[3] - 1, box2[3] - 1)
-        if inter_x1 < inter_x2 and inter_y1 < inter_y2:
-            inter = (inter_x2 - inter_x1 + 1) * (inter_y2 - inter_y1 + 1)
-        else:
-            inter = 0
-        union = (
-            (box1[2] - box1[0]) * (box1[3] - box1[1])
-            + (box2[2] - box2[0]) * (box2[3] - box2[1])
-            - inter
-        )
-        return float(inter) / union
-
-    contents = [completion[0]["content"] for completion in completions]
-    rewards = []
-    current_time = datetime.now().strftime("%d-%H-%M-%S-%f")
-    answer_tag_pattern = r"<answer>(.*?)</answer>"
-    number_pattern = r"[-+]?\d*\.\d+|\d+"
-    for content, sol in zip(contents, solution):
-        reward = 0.0
-        # Try symbolic verification first
-        try:
-            content_answer_match = re.search(answer_tag_pattern, content)
-            if content_answer_match:
-                content_answer = content_answer_match.group(1).strip()
-                number_match = re.findall(number_pattern, content_answer)
-
-                x1, y1, x2, y2 = [float(number_match[i]) for i in range(4)]
-                bbox = [int(x1), int(y1), int(x2), int(y2)]
-                if iou(bbox, sol) > 0.5:
-                    reward = 1.0
-                if all(bbox[i] <= 1 for i in range(4)):
-                    bbox = [
-                        int(x1 * 1000),
-                        int(y1 * 1000),
-                        int(x2 * 1000),
-                        int(y2 * 1000),
-                    ]
-                    if iou(bbox, sol) > 0.5:
-                        reward = 1.0
-        except Exception:
-            pass  # Continue to next verification method if this fails
-
-        rewards.append(reward)
-        if os.getenv("DEBUG_MODE") == "true":
-            log_path = os.getenv("LOG_PATH")
-            # local_rank = int(os.getenv("LOCAL_RANK", 0))
-            with open(log_path, "a") as f:
-                f.write(
-                    f"------------- {current_time} Accuracy reward:"
-                    f" {reward} -------------\n"
-                )
-                f.write(f"Content: {content}\n")
-                f.write(f"Solution: {sol}\n")
-    return rewards
-
-
-def format_reward(completions, **kwargs):
-    """Reward function that checks if the completion has a specific format."""
-    pattern = r"<think>.*?</think>\s*<answer>.*?</answer>"
-    completion_contents = [completion[0]["content"] for completion in completions]
-    matches = [
-        re.fullmatch(pattern, content, re.DOTALL) for content in completion_contents
-    ]
-    return [1.0 if match else 0.0 for match in matches]
-
-
-def action_selection_reward(completions, **kwargs):
-    """Reward function that checks if the completion has chosen a valid navigation action in a specific format.
-    
-    The function expects the completion to contain a <think>...</think> section followed by an <answer>...</answer>
-    section, where the answer is exactly one of the following: MoveAhead, RotateLeft, RotateRight, LookUp, LookDown, or Done.
-    """
-    # Regular expression pattern that matches the required structure and valid answer options
-    pattern = r"<think>.*?</think>\s*<answer>\s*(MoveAhead|RotateLeft|RotateRight|LookUp|LookDown|Done)\s*</answer>"
-    
-    # Extract the content field from each completion
-    completion_contents = [completion[0]["content"] for completion in completions]
-    
-    # Check each completion content against the pattern using re.fullmatch with DOTALL flag to include newlines
-    matches = [re.fullmatch(pattern, content, re.DOTALL) for content in completion_contents]
-    
-    # Return a reward of 1.0 if the content matches the pattern exactly, otherwise 0.0
-    return [1.0 if match else 0.0 for match in matches]
-
-reward_funcs_registry = {
-    "accuracy": iou_reward,
-    "format": format_reward,
-    "action_selection_reward": action_selection_reward,
-}
-
-# reward_funcs_registry_2_5 = {
-#     "accuracy": iou_reward_2_5,
-#     "format": format_reward,
-# }
-
-
 def main(script_args, training_args, model_args):
-    # Get reward functions
-    # if "Qwen2.5-VL" in model_args.model_name_or_path:
-    #     reward_funcs = [reward_funcs_registry_2_5[func] for func in script_args.reward_funcs]
-    # else:
-    #     reward_funcs = [reward_funcs_registry[func] for func in script_args.reward_funcs]
     reward_funcs = [reward_funcs_registry[func] for func in script_args.reward_funcs]
     print("reward_funcs:", reward_funcs)
 
