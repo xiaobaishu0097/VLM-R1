@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import yaml
-from open_r1.trainer import Qwen2VLGRPOTrainer
+from open_r1.trainer import Qwen2VLNavGRPOTrainer
 from PIL import Image
 from torch.utils.data import Dataset
 from trl import GRPOConfig, ModelConfig, ScriptArguments, TrlParser, get_peft_config
@@ -39,14 +39,6 @@ from reward_functions import *
 
 @dataclass
 class GRPOScriptArguments(ScriptArguments):
-    """
-    Script arguments for the GRPO training script.
-
-    Args:
-        reward_funcs (`list[str]`):
-            List of reward functions. Possible values: 'accuracy', 'format'.
-    """
-
     reward_funcs: list[str] = field(
         default_factory=lambda: [
             "soft_format",
@@ -55,9 +47,6 @@ class GRPOScriptArguments(ScriptArguments):
             "action_selection_reward",
             "optimal_action_reward",
         ],
-        metadata={
-            "help": "List of reward functions. Possible values: 'accuracy', 'format'"
-        },
     )
     max_pixels: Optional[int] = field(
         default=12845056,
@@ -91,10 +80,16 @@ SYSTEM_PROMPT = (
 )
 
 
-class LazySupervisedDataset(Dataset):
-    def __init__(self, data_path: str, script_args: GRPOScriptArguments):
-        super(LazySupervisedDataset, self).__init__()
+class LazySequenceSupervisedDataset(Dataset):
+    def __init__(
+        self,
+        data_path: str,
+        script_args: GRPOScriptArguments,
+        training_args: GRPOConfig,
+    ):
+        super().__init__()
         self.script_args = script_args
+        self.training_args = training_args
         self.list_data_dict = []
 
         if data_path.endswith(".yaml"):
@@ -160,13 +155,25 @@ class LazySupervisedDataset(Dataset):
         def make_conversation(example):
             return {
                 "prompt": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {
+                        "role": "system",
+                        "content": [{"type": "text", "text": SYSTEM_PROMPT}],
+                    },
                     {
                         "role": "user",
-                        "content": (
-                            "Please select the next navigation action towards the"
-                            f" target: {example['target_id'].split('|')[0]}."
-                        ),
+                        "content": [
+                            {"type": "image"},
+                            {
+                                "type": "text",
+                                "text": QUESTION_TEMPLATE.format(
+                                    Question=(
+                                        "Please select the next navigation action"
+                                        " towards the target:"
+                                        f" {example['target_id'].split('|')[0]}."
+                                    )
+                                ),
+                            },
+                        ],
                     },
                 ],
             }
@@ -174,13 +181,17 @@ class LazySupervisedDataset(Dataset):
         QUESTION_TEMPLATE = (
             "{Question} Please select one of the navigation actions: MoveAhead,"
             " RotateLeft, RotateRight, LookUp, LookDown, and Done. Output the reasoning"
-            " process in <reasoning> </reasoning> and final answer in <answer> </answer> tags."
+            " process in <reasoning> </reasoning> and final answer in <answer> </answer> tags, i.e., <reasoning>\nreasoning process here\n</reasoning>\n<answer>"
+            "\nanswer here\n</answer>\n."
         )
 
         def make_conversation_image(example):
             return {
                 "prompt": [
-                    # {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]},
+                    {
+                        "role": "system",
+                        "content": [{"type": "text", "text": SYSTEM_PROMPT}],
+                    },
                     {
                         "role": "user",
                         "content": [
@@ -208,16 +219,43 @@ class LazySupervisedDataset(Dataset):
         else:
             image = None
 
+        if not os.path.exists(
+            os.path.join(self.training_args.output_dir, "navigation_history")
+        ):
+            os.makedirs(
+                os.path.join(self.training_args.output_dir, "navigation_history")
+            )
+
+        if int(example["id"].split("-")[-1]) > 0:
+            last_step_info_path = os.path.join(
+                self.training_args.output_dir,
+                "navigation_history",
+                f"{example['id'].split('-')[0]}-{example['id'].split('-')[1]}-{int(example['id'].split('-')[-1])-1:03d}.txt",
+            )
+            if os.path.exists(last_step_info_path):
+                with open(last_step_info_path, "r") as rf:
+                    last_step_info = json.load(rf)["response"]
+            else:
+                last_step_info = None
+        else:
+            last_step_info = None
+
         return {
+            "id": example["id"],
             "image": image,
             "problem": (
                 "Please select the next navigation action towards the target:"
                 f" {example['target_id'].split('|')[0]}."
             ),
             "solution": example["optimal_action"],
+            "navigation_history": os.path.join(
+                self.training_args.output_dir,
+                "navigation_history",
+                f"{example['id']}.txt",
+            ),
             "prompt": (
                 make_conversation_image(example)["prompt"]
-                if "image" in example
+                if last_step_info is not None
                 else make_conversation(example)["prompt"]
             ),
         }
@@ -228,9 +266,11 @@ def main(script_args, training_args, model_args):
     print("reward_funcs:", reward_funcs)
 
     # Load the dataset
-    dataset = LazySupervisedDataset(script_args.dataset_name, script_args)
+    dataset = LazySequenceSupervisedDataset(
+        script_args.dataset_name, script_args, training_args
+    )
 
-    trainer_cls = Qwen2VLGRPOTrainer
+    trainer_cls = Qwen2VLNavGRPOTrainer
 
     # Initialize the GRPO trainer
     trainer = trainer_cls(

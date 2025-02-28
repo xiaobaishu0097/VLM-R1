@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
+import json
 import os
 import random
 import textwrap
@@ -78,7 +78,7 @@ class NavigationTrajectorySampler(Sampler[int]):
     def __iter__(self) -> Iterator[int]:
         traj_dict = {}
         for idx, item in enumerate(self.data):
-            traj_id, step_id = item.split("-")
+            _, traj_id, step_id = item["id"].split("-")
             step_id = int(step_id)
             traj_dict.setdefault(traj_id, []).append((step_id, idx))
 
@@ -659,6 +659,11 @@ class Qwen2VLNavGRPOTrainer(Trainer):
         # Sum the rewards from all reward functions
         rewards = rewards_per_func.sum(dim=1)
 
+        with open(inputs[0]["navigation_history"], "w") as wf:
+            json.dump(
+                {"response": completions[rewards.argmax()][0]["content"]}, wf, indent=4
+            )
+
         # Compute grouped-wise rewards
         mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
         std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
@@ -762,13 +767,15 @@ class Qwen2VLNavGRPOTrainer(Trainer):
         if hasattr(self.model.config, "unsloth_version"):
             tags.append("unsloth")
 
-        citation = textwrap.dedent("""\
+        citation = textwrap.dedent(
+            """\
             @article{zhihong2024deepseekmath,
                 title        = {{DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models}},
                 author       = {Zhihong Shao and Peiyi Wang and Qihao Zhu and Runxin Xu and Junxiao Song and Mingchuan Zhang and Y. K. Li and Y. Wu and Daya Guo},
                 year         = 2024,
                 eprint       = {arXiv:2402.03300},
-            """)
+            """
+        )
 
         model_card = generate_model_card(
             base_model=base_model,
